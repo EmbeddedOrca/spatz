@@ -77,6 +77,9 @@ add_library(sdotp-bp-fmatmul sdotp-bp-fmatmul/kernel/sdotp-fmatmul.c)
 
 add_library(dp-faxpy dp-faxpy/kernel/faxpy.c)
 
+# Changed
+add_library(dp-faxpy-db dp-faxpy-db/kernel/faxpy-db.c)
+
 add_library(dp-fdotp dp-fdotp/kernel/fdotp.c)
 
 add_library(dp-fconv2d dp-fconv2d/kernel/fconv2d.c)
@@ -117,6 +120,9 @@ add_spatz_test_threeParam(sdotp-bp-fmatmul sdotp-bp-fmatmul/main.c 128 256 128)
 
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 256)
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 1024)
+
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 256)
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 16)
 
 add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 128)
 add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 4096)
