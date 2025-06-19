@@ -127,6 +127,7 @@ int main() {
     DEBUG(printf("Address of result: %p\n", result), DBG_LVL_ERR);
   }
 
+  // Start the initial DMA transfer
   if (cid == 0) {
     calc_timer = benchmark_get_cycle();
     snrt_dma_start_2d(
@@ -156,7 +157,7 @@ int main() {
 
   do {
 
-
+    // Wait for the data load of the current calc data
     if (cid == 0)
       snrt_dma_wait_all();
 
@@ -164,6 +165,7 @@ int main() {
 
     snrt_cluster_hw_barrier();
 
+    // Start the DMA transfer on chunk i + 1
     if (cid == 0) {
       if (load_idx < dim) {
         unsigned store_offset = ((iter + 1) % 2) * CHUNCK_SIZE;
@@ -187,42 +189,37 @@ int main() {
       }
     }
 
+    // Save the result of iteration i
     unsigned calc_width = CHUNCK_SIZE >> 1;
     unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + calc_width * cid;
-    // DEBUG(printf("Core %u: A: %p, B: %p, calc_width: %u \n", cid,
-                //  a + calc_offset, b + calc_offset, calc_width), DBG_LVL_DBG);
-
-    result[(iter << 1) + cid] = fdotp_v64b(
+    result[cid] = fdotp_v64b(
       a + calc_offset,
       b + calc_offset,
-      calc_width
+      calc_width,
+      result[cid]
     );
-    // result[cid] += fdotp(a + calc_offset, b + calc_offset, CHUNCK_SIZE >> 1);
-    // DEBUG(printf("Core %u: %f\n", cid, result[cid]), DBG_LVL_DBG);
 
-      iter++;
+    iter++;
   } while (load_idx < dim);
 
-  if (cid == 0)
-    DEBUG(printf("Accumulate\n"), DBG_LVL_INFO);
   snrt_cluster_hw_barrier();
 
-  double acc = 0.0;
+  // Accumulate the result into L1
   if (cid == 0) {
-    acc = vreduce_sum(result, num_cores * iter);
-    dotp_res = acc;
+    DEBUG(printf("Accumulate\n"), DBG_LVL_INFO);
+    dotp_res = vreduce_sum(result, num_cores);
     DEBUG(printf("Final result: %f\n", dotp_res), DBG_LVL_DBG);
   }
+
 
   // Wait for all cores to finish
   snrt_cluster_hw_barrier();
 
   // End dump, Record the time
-  if (cid == 0)
+  if (cid == 0) {
     stop_kernel();
     calc_timer = benchmark_get_cycle() - calc_timer;
 
-  if (cid == 0) {
     long unsigned int performance = 1000 * 2 * dotp_l.M / calc_timer;
     long unsigned int utilization =
         performance / (2 * num_cores * SNRT_NFPU_PER_CORE);
@@ -233,14 +230,13 @@ int main() {
            performance, utilization);
   }
 
-
+  // Check and display results
   if (cid == 0)
     if (fp_check(dotp_res, dotp_result)) {
       printf("Error: Result = %f, Golden = %f\n", dotp_res, dotp_result);
       return -1;
     }
 
-  // Wait for core 0 to finish displaying results
   snrt_cluster_hw_barrier();
 
   return 0;
