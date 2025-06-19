@@ -82,6 +82,9 @@ add_library(dp-faxpy-db dp-faxpy-db/kernel/faxpy-db.c)
 
 add_library(dp-fdotp dp-fdotp/kernel/fdotp.c)
 
+# Dubble buffering implementation
+add_library(dp-fdotp-db dp-fdotp-db/kernel/fdotp-db.c)
+
 add_library(dp-fconv2d dp-fconv2d/kernel/fconv2d.c)
 
 add_library(dp-fft dp-fft/kernel/fft.c)
@@ -126,6 +129,10 @@ add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 16)
 
 add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 128)
 add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 4096)
+
+# Dubble buffering implementation
+add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 128)
+add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 4096)
 
 add_spatz_test_twoParam_T(gemv gemv/main.c 64 128 64)
 

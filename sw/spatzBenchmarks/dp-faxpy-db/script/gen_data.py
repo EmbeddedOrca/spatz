@@ -418,11 +418,11 @@ def ascending_data_generator(shape, prec):
     if prec == 64:
         return torch.arange(1, shape[0] + 1, dtype=torch.float64), {}
     elif prec == 32:
-        return torch.arange(1, shape[0] + 1, dtype=torch.float64), {}
+        return torch.arange(1, shape[0] + 1, dtype=torch.float32), {}
     elif prec == 16:
-        return torch.arange(1, shape[0] + 1, dtype=torch.float64), {}
+        return torch.arange(1, shape[0] + 1, dtype=torch.float16), {}
     elif prec == 8:
-        return torch.arange(1, shape[0] + 1, dtype=torch.float64), {}
+        return torch.arange(1, shape[0] + 1, dtype=torch.uint8), {}
 
 def rand_data_generator(shape, prec, alt=False):
     if prec == 64:

@@ -51,9 +51,11 @@ static inline int fp_check(const T a, const T b) {
 int main() {
   const unsigned int num_cores = snrt_cluster_core_num();
   const unsigned int cid = snrt_cluster_core_idx();
-  
+
   // Reset timer
-  unsigned int timer = (unsigned int)-1;
+  unsigned int load_timer = (unsigned int)-1;
+  unsigned int calc_timer = (unsigned int)-1;
+  unsigned int store_timer = (unsigned int)-1;
   const unsigned int m_core = gemv_l.M / num_cores;
 
   // Allocate the matrices
@@ -65,6 +67,7 @@ int main() {
 
   // Initialize the matrices
   if (cid == 0) {
+    load_timer = benchmark_get_cycle();
     snrt_dma_start_1d(a, gemv_A_dram, gemv_l.M * gemv_l.N * sizeof(T));
     snrt_dma_start_1d(b, gemv_B_dram, gemv_l.N * sizeof(T));
     snrt_dma_wait_all();
@@ -72,7 +75,10 @@ int main() {
 
   // Wait for all cores to finish
   snrt_cluster_hw_barrier();
-  
+
+  if (cid == 0)
+    load_timer = benchmark_get_cycle() - load_timer;
+
   // Calculate internal pointers
   T *a_core = a + gemv_l.N * m_core * cid;
   T *result_core = result + m_core * cid;
@@ -86,14 +92,14 @@ int main() {
 
   // Start timer
   if (cid == 0)
-    timer = benchmark_get_cycle();
+    calc_timer = benchmark_get_cycle();
 
   // Calculate gemv
   if (sizeof(T) == 8)
     gemv_v64b(a_core, b, result_core, m_core, gemv_l.N);
   else if (sizeof(T) == 4)
     gemv_v32b(a_core, b, result_core, m_core, gemv_l.N);
-  else 
+  else
     gemv_v16b(a_core, b, result_core, m_core, gemv_l.N);
 
   // Wait for all cores to finish
@@ -105,19 +111,7 @@ int main() {
 
   // End timer and check if new best runtime
   if (cid == 0)
-    timer = benchmark_get_cycle() - timer;
-
-  // Check and display results
-  if (cid == 0) {
-    long unsigned int performance = 1000 * 2 * gemv_l.M * gemv_l.N / timer;
-    long unsigned int utilization =
-        performance / (2 * num_cores * SNRT_NFPU_PER_CORE * (8 / sizeof(T)));
-
-    printf("\n----- (%d x %d) x (%d x 1) gemv -----\n", gemv_l.M, gemv_l.N, gemv_l.N);
-    printf("The execution took %u cycles.\n", timer);
-    printf("The performance is %ld OP/1000cycle (%ld%%o utilization).\n",
-           performance, utilization);
-  }
+    calc_timer = benchmark_get_cycle() - calc_timer;
 
   if (cid == 0) {
     for (int i = 0; i < gemv_l.M; i++) {
@@ -126,6 +120,34 @@ int main() {
         return -1;
       }
     }
+  }
+
+  // Store the results
+  if (cid == 0) {
+    store_timer = benchmark_get_cycle();
+    snrt_dma_start_1d(gemv_result, result, gemv_l.M * sizeof(T));
+    snrt_dma_wait_all();
+  }
+
+  // Wait for all cores to finish
+  snrt_cluster_hw_barrier();
+
+  if (cid == 0)
+    store_timer = benchmark_get_cycle() - store_timer;
+
+  // Check and display results
+  if (cid == 0) {
+    long unsigned int performance = 1000 * 2 * gemv_l.M * gemv_l.N / calc_timer;
+    long unsigned int utilization =
+        performance / (2 * num_cores * SNRT_NFPU_PER_CORE * (8 / sizeof(T)));
+
+    printf("\n----- (%d x %d) x (%d x 1) gemv -----\n", gemv_l.M, gemv_l.N, gemv_l.N);
+    printf("The intial load took %u cycles.\n", load_timer);
+    printf("The calculation took %u cycles.\n", calc_timer);
+    printf("The final store took %u cycles.\n", store_timer);
+
+    printf("The performance is %ld OP/1000cycle (%ld%%o utilization).\n",
+           performance, utilization);
   }
 
   // Wait for core 0 to finish displaying results

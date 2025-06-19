@@ -43,7 +43,8 @@ int main() {
   const unsigned int cid = snrt_cluster_core_idx();
 
   // Reset timer
-  unsigned int timer = (unsigned int)-1;
+  unsigned int load_timer = (unsigned int)-1;
+  unsigned int calc_timer = (unsigned int)-1;
 
   const unsigned int dim = dotp_l.M / num_cores;
 
@@ -56,6 +57,7 @@ int main() {
 
   // Initialize the matrices
   if (cid == 0) {
+    load_timer = benchmark_get_cycle();
     snrt_dma_start_1d(a, dotp_A_dram, dotp_l.M * sizeof(double));
     snrt_dma_start_1d(b, dotp_B_dram, dotp_l.M * sizeof(double));
     snrt_dma_wait_all();
@@ -63,6 +65,9 @@ int main() {
 
   // Wait for all cores to finish
   snrt_cluster_hw_barrier();
+
+  if (cid == 0)
+    load_timer = benchmark_get_cycle() - load_timer;
 
   // Calculate internal pointers
   double *a_int = a + dim * cid;
@@ -77,7 +82,7 @@ int main() {
 
   // Start timer
   if (cid == 0)
-    timer = benchmark_get_cycle();
+    calc_timer = benchmark_get_cycle();
 
   // Calculate dotp
   double acc;
@@ -103,19 +108,23 @@ int main() {
 
   // End timer and check if new best runtime
   if (cid == 0)
-    timer = benchmark_get_cycle() - timer;
+    calc_timer = benchmark_get_cycle() - calc_timer;
 
   // Check and display results
   if (cid == 0) {
-    long unsigned int performance = 1000 * 2 * dotp_l.M / timer;
+    long unsigned int performance = 1000 * 2 * dotp_l.M / calc_timer;
     long unsigned int utilization =
         performance / (2 * num_cores * SNRT_NFPU_PER_CORE);
 
     printf("\n----- (%d) dp fdotp -----\n", dotp_l.M);
-    printf("The execution took %u cycles.\n", timer);
+    printf("The intial load took %u cycles.\n", load_timer);
+    printf("The calculation took %u cycles.\n", calc_timer);
+
     printf("The performance is %ld OP/1000cycle (%ld%%o utilization).\n",
            performance, utilization);
   }
+  if (cid == 0)
+    printf("Core %u: Result = %f\n", cid, (float)result[cid]);
 
   if (cid == 0)
     if (fp_check(result[0], dotp_result)) {
