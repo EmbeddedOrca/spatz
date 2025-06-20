@@ -45,7 +45,7 @@ double dotp_res = 0.0;
 #define T_S sizeof(double)
 #define CHUNCK_SIZE 8 // We always access at 512 bit at a time
 
-#define NUM_CHUNCKS 8
+#define NUM_CHUNCKS 32
 #define TRANSFER_SIZE (NUM_CHUNCKS * CHUNCK_SIZE)
 // #define NUM_ROW CHUNCK_SIZE / ACCESS_WIDTH
 
@@ -190,13 +190,17 @@ int main() {
     }
 
     // Save the result of iteration i
-    unsigned calc_width = CHUNCK_SIZE >> 1;
-    unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + calc_width * cid;
-    // unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + (calc_width * cid) << 2;
+    // unsigned calc_width = CHUNCK_SIZE >> 1;
+    // unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + calc_width * cid;
+    unsigned calc_width = CHUNCK_SIZE;
+    unsigned left_right = (iter % 2) * CHUNCK_SIZE;
+    unsigned core_offset = cid * MEMORY_BANKS;
+
+    unsigned calc_offset = left_right + core_offset;
     result[cid] = fdotp_v64b(
       a + calc_offset,
       b + calc_offset,
-      calc_width * NUM_CHUNCKS,
+      calc_width * NUM_CHUNCKS / num_cores,
       result[cid]
     );
 

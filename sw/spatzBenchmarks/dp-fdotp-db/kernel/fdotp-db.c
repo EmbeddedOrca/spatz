@@ -18,7 +18,7 @@
 
 #include "fdotp-db.h"
 
-#define VL 4
+#define VL 8
 #define LJ 4 * VL
 
 // 64-bit dot-product: a * b
