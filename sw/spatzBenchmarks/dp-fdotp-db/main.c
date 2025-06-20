@@ -45,7 +45,7 @@ double dotp_res = 0.0;
 #define T_S sizeof(double)
 #define CHUNCK_SIZE 8 // We always access at 512 bit at a time
 
-#define NUM_CHUNCKS 1
+#define NUM_CHUNCKS 8
 #define TRANSFER_SIZE (NUM_CHUNCKS * CHUNCK_SIZE)
 // #define NUM_ROW CHUNCK_SIZE / ACCESS_WIDTH
 
@@ -192,10 +192,11 @@ int main() {
     // Save the result of iteration i
     unsigned calc_width = CHUNCK_SIZE >> 1;
     unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + calc_width * cid;
+    // unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + (calc_width * cid) << 2;
     result[cid] = fdotp_v64b(
       a + calc_offset,
       b + calc_offset,
-      calc_width,
+      calc_width * NUM_CHUNCKS,
       result[cid]
     );
 
@@ -233,7 +234,7 @@ int main() {
   // Check and display results
   if (cid == 0)
     if (fp_check(dotp_res, dotp_result)) {
-      printf("Error: Result = %f, Golden = %f\n", dotp_res, dotp_result);
+      printf("\033[31;1mError\033[0m: Result = %f, Golden = %f\n", dotp_res, dotp_result);
       return -1;
     }
 

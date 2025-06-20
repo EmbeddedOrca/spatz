@@ -168,8 +168,8 @@ def main():
     with args.cfg.open() as f:
         param = hjson.loads(f.read())
 
-    vec_A, bits_A = ascending_data_generator((param["M"], 1), param["prec"])
-    vec_B, bits_B = ascending_data_generator((param["M"], 1), param["prec"])
+    vec_A, bits_A = rand_data_generator((param["M"], 1), param["prec"])
+    vec_B, bits_B = rand_data_generator((param["M"], 1), param["prec"])
     result = dotp(vec_A, vec_B)
 
     kwargs = {
