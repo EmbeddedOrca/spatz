@@ -23,13 +23,13 @@
 #include DATAHEADER
 #include "kernel/fdotp-db.c"
 
-#define DBG_LVL_NONE 0
+#define DBG_LVL_NON 0
 #define DBG_LVL_ERR 1
-#define DBG_LVL_WARN 2
-#define DBG_LVL_INFO 3
+#define DBG_LVL_WRN 2
+#define DBG_LVL_INF 3
 #define DBG_LVL_DBG 4
 
-#define DBG_LVL DBG_LVL_NONE
+#define DBG_LVL DBG_LVL_DBG
 
 #define DEBUG(func, lvl) \
   if (lvl <= DBG_LVL) { \
@@ -45,7 +45,7 @@ double dotp_res = 0.0;
 #define T_S sizeof(double)
 #define CHUNCK_SIZE 8 // We always access at 512 bit at a time
 
-#define NUM_CHUNCKS 32
+#define NUM_CHUNCKS 3
 #define TRANSFER_SIZE (NUM_CHUNCKS * CHUNCK_SIZE)
 // #define NUM_ROW CHUNCK_SIZE / ACCESS_WIDTH
 
@@ -110,17 +110,23 @@ int main() {
   unsigned int load_idx = 0;
   unsigned int dim = dotp_l.M;
 
-  unsigned num_iter = dim / (CHUNCK_SIZE * NUM_CHUNCKS);
-  if (cid == 0) {
-    DEBUG(printf("Expected iterations: %u\n", num_iter), DBG_LVL_DBG);
-  }
+  unsigned int chunk_idx = 0;
+  unsigned int end_chunk = dim / CHUNCK_SIZE;
+  int num_chunks = end_chunk - chunk_idx < NUM_CHUNCKS ? end_chunk - chunk_idx : NUM_CHUNCKS;
+
+  // unsigned num_iter = dim / (CHUNCK_SIZE * NUM_CHUNCKS);
+  // if (cid == 0) {
+    // DEBUG(printf("Expected iterations: %u\n", num_iter), DBG_LVL_DBG);
+  // }
 
   // Allocate the matrices
   if (cid == 0) {
     a = (double *)snrt_l1alloc(dim * T_S);
     b = (double *)snrt_l1alloc(dim * T_S);
-    result = (double *)snrt_l1alloc(num_cores * T_S * num_iter);
-    snrt_memset(result, 0, num_cores * T_S * num_iter);
+    // result = (double *)snrt_l1alloc(num_cores * T_S * num_iter);
+    // snrt_memset(result, 0, num_cores * T_S * num_iter);
+    result = (double *)snrt_l1alloc(num_cores * T_S);
+    snrt_memset(result, 0, num_cores * T_S);
 
     DEBUG(printf("Address of a: %p\n", a), DBG_LVL_ERR);
     DEBUG(printf("Address of b: %p\n", b), DBG_LVL_ERR);
@@ -136,7 +142,7 @@ int main() {
       T_S * CHUNCK_SIZE,
       2 * CHUNCK_SIZE * T_S,
       CHUNCK_SIZE * T_S,
-      NUM_CHUNCKS
+      num_chunks
     );
     snrt_dma_start_2d(
       b,
@@ -144,8 +150,9 @@ int main() {
       CHUNCK_SIZE * T_S,
       2 * CHUNCK_SIZE * T_S,
       CHUNCK_SIZE * T_S,
-      NUM_CHUNCKS
+      num_chunks
     );
+    DEBUG(printf("DMA started for chunk %d, num_chunks: %d\n", chunk_idx, num_chunks), DBG_LVL_DBG);
   }
 
   snrt_cluster_hw_barrier();
@@ -161,57 +168,65 @@ int main() {
     if (cid == 0)
       snrt_dma_wait_all();
 
-    load_idx += CHUNCK_SIZE * NUM_CHUNCKS;
+    // load_idx += CHUNCK_SIZE * NUM_CHUNCKS;
+    chunk_idx += num_chunks;
+    num_chunks = end_chunk - chunk_idx < NUM_CHUNCKS ? end_chunk - chunk_idx : NUM_CHUNCKS;
 
     snrt_cluster_hw_barrier();
 
     // Start the DMA transfer on chunk i + 1
     if (cid == 0) {
-      if (load_idx < dim) {
-        unsigned store_offset = ((iter + 1) % 2) * CHUNCK_SIZE;
+      // if (load_idx < dim) {
+      if (num_chunks) {
+        unsigned dest_offset = ((iter + 1) % 2) * CHUNCK_SIZE;
 
         snrt_dma_start_2d(
-          a + store_offset,
+          a + dest_offset,
           dotp_A_dram + load_idx,
           T_S * CHUNCK_SIZE,
           2 * CHUNCK_SIZE * T_S,
           CHUNCK_SIZE * T_S,
-          NUM_CHUNCKS
+          num_chunks
         );
         snrt_dma_start_2d(
-          b + store_offset,
+          b + dest_offset,
           dotp_B_dram + load_idx,
           CHUNCK_SIZE * T_S,
           2 * CHUNCK_SIZE * T_S,
           CHUNCK_SIZE * T_S,
-          NUM_CHUNCKS
+          num_chunks
         );
+        DEBUG(printf("DMA started for chunk %d, num_chunks: %d\n", chunk_idx, num_chunks), DBG_LVL_DBG);
       }
     }
 
     // Save the result of iteration i
     // unsigned calc_width = CHUNCK_SIZE >> 1;
     // unsigned calc_offset = (iter % 2) * CHUNCK_SIZE + calc_width * cid;
-    unsigned calc_width = CHUNCK_SIZE;
     unsigned left_right = (iter % 2) * CHUNCK_SIZE;
     unsigned core_offset = cid * MEMORY_BANKS;
-
     unsigned calc_offset = left_right + core_offset;
+
+    DEBUG(printf("Core %u, left_right: %u, core_offset: %u, calc_offset: %u\n",
+                 cid, left_right, core_offset, calc_offset), DBG_LVL_DBG);
+
     result[cid] = fdotp_v64b(
       a + calc_offset,
       b + calc_offset,
-      calc_width * NUM_CHUNCKS / num_cores,
-      result[cid]
+      CHUNCK_SIZE * num_chunks / num_cores,
+      result[cid] // NOTE: This value is added to the result
     );
 
     iter++;
-  } while (load_idx < dim);
+    DEBUG(printf("Number of chunks: %d, chunk_idx: %d, num_chunks: %d, iter: %u, cid: %u, result[%u]: %f\n",
+                 num_chunks, chunk_idx, num_chunks, iter, cid, cid, result[cid]), DBG_LVL_DBG);
+  } while (chunk_idx < end_chunk);
 
   snrt_cluster_hw_barrier();
 
   // Accumulate the result into L1
   if (cid == 0) {
-    DEBUG(printf("Accumulate\n"), DBG_LVL_INFO);
+    DEBUG(printf("Accumulate\n"), DBG_LVL_INF);
     dotp_res = vreduce_sum(result, num_cores);
     DEBUG(printf("Final result: %f\n", dotp_res), DBG_LVL_DBG);
   }
