@@ -21,6 +21,61 @@
 // 64-bit AXPY: y = a * x + y
 void faxpy_db_v64b(const double a, const double *x, const double *y,
                 unsigned int avl) {
+  const unsigned int VL = 8; // Vector length
+  const unsigned int LJ = 4 * VL; // Load jump size (in bytes)
+
+  const unsigned int cid = snrt_cluster_core_idx();
+
+  unsigned int vl;
+
+  printf("core %u - Starting faxpy_db_v64b with a: %f, x: %p, y: %p, avl: %u\n", cid, a, x, y, avl);
+
+  // Set the VL
+  asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(VL));
+  // Start the initial load
+  asm volatile("vle64.v v0, (%0)" ::"r"(x));
+  asm volatile("vle64.v v8, (%0)" ::"r"(y));
+  printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
+  x += LJ;
+  y += LJ;
+
+  // Stripmine and accumulate a partial vector
+  do {
+    // Set the vl
+    // asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(VL));
+
+    // Load vectors
+    asm volatile("vle64.v v16, (%0)" ::"r"(x));
+    asm volatile("vle64.v v24, (%0)" ::"r"(y));
+    printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
+
+    // Multiply-accumulate
+    asm volatile("vfmacc.vf v8, %0, v0" ::"f"(a));
+    asm volatile("vse64.v v8, (%0)" ::"r"(y-LJ));
+    x += LJ;
+    y += LJ;
+
+    avl -= vl;
+    if (avl <= 0)
+      break;
+
+    // Load vectors
+    asm volatile ("vle64.v v0, (%0)" ::"r"(x));
+    asm volatile ("vle64.v v8, (%0)" ::"r"(y));
+    printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
+
+    // Multiply-accumulate
+    asm volatile("vfmacc.vf v24, %0, v0" ::"f"(a));
+    asm volatile("vse64.v v24, (%0)" ::"r"(y-LJ));
+    x += LJ;
+    y += LJ;
+
+    avl -= vl;
+  } while (avl > 0);
+}
+
+void faxpy_v64b(const double a, const double *x, const double *y,
+                unsigned int avl) {
   unsigned int vl;
 
   // Stripmine and accumulate a partial vector
@@ -46,7 +101,7 @@ void faxpy_db_v64b(const double a, const double *x, const double *y,
 }
 
 // 32-bit AXPY: y = a * x + y
-void faxpy_db_v32b(const float a, const float *x, const float *y,
+void faxpy_v32b(const float a, const float *x, const float *y,
                 unsigned int avl) {
   unsigned int vl;
 
@@ -73,7 +128,7 @@ void faxpy_db_v32b(const float a, const float *x, const float *y,
 }
 
 // 16-bit AXPY: y = a * x + y
-void faxpy_db_v16b(const _Float16 a, const _Float16 *x, const _Float16 *y,
+void faxpy_v16b(const _Float16 a, const _Float16 *x, const _Float16 *y,
                 unsigned int avl) {
   unsigned int vl;
 

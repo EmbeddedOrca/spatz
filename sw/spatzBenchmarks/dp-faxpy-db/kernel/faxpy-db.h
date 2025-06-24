@@ -21,9 +21,11 @@
 
 inline void faxpy_db_v64b(const double a, const double *x, const double *y,
                        unsigned int avl) __attribute__((always_inline));
-inline void faxpy_db_v32b(const float a, const float *x, const float *y,
+inline void faxpy_v64b(const double a, const double *x, const double *y,
                        unsigned int avl) __attribute__((always_inline));
-inline void faxpy_db_v16b(const _Float16 a, const _Float16 *x, const _Float16 *y,
+inline void faxpy_v32b(const float a, const float *x, const float *y,
+                       unsigned int avl) __attribute__((always_inline));
+inline void faxpy_v16b(const _Float16 a, const _Float16 *x, const _Float16 *y,
                        unsigned int avl) __attribute__((always_inline));
 
 #endif

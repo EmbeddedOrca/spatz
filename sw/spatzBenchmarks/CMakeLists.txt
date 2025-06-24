@@ -77,12 +77,12 @@ add_library(sdotp-bp-fmatmul sdotp-bp-fmatmul/kernel/sdotp-fmatmul.c)
 
 add_library(dp-faxpy dp-faxpy/kernel/faxpy.c)
 
-# Changed
+# Double buffering implementation
 add_library(dp-faxpy-db dp-faxpy-db/kernel/faxpy-db.c)
 
 add_library(dp-fdotp dp-fdotp/kernel/fdotp.c)
 
-# Dubble buffering implementation
+# Double buffering implementation
 add_library(dp-fdotp-db dp-fdotp-db/kernel/fdotp-db.c)
 
 add_library(dp-fconv2d dp-fconv2d/kernel/fconv2d.c)

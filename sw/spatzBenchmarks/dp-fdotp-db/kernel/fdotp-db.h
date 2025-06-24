@@ -19,7 +19,8 @@
 #ifndef _FDOTPROD_H_
 #define _FDOTPROD_H_
 
-inline double fdotp_v64b(const double *a, const double *b, unsigned int avl, double acc)
+inline double fdotp_v64b_ma(const double *a, const double *b, unsigned int avl, double acc);
+inline double fdotp_v64b(const double *a, const double *b, unsigned int avl, double acc);
     __attribute__((always_inline));
 inline float fdotp_v32b(const float *a, const float *b, unsigned int avl)
     __attribute__((always_inline));
