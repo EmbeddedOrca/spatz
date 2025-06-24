@@ -124,6 +124,8 @@ add_spatz_test_threeParam(sdotp-bp-fmatmul sdotp-bp-fmatmul/main.c 128 256 128)
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 256)
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 1024)
 
+
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 1024)
 add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 256)
 add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 16)
 
@@ -135,6 +137,9 @@ add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 128)
 add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 4096)
 
 add_spatz_test_twoParam_T(gemv gemv/main.c 64 128 64)
+
+add_spatz_test_twoParam_T(gemv-db gemv-db/main.c 64 128 64)
+add_spatz_test_twoParam_T(gemv-db gemv-db/main.c 32 32 64)
 
 add_spatz_test_twoParam_T(dp-gemv-col gemv-col/main.c 64 128 64)
 add_spatz_test_twoParam_T(sp-gemv-col gemv-col/main.c 128 128 32)
