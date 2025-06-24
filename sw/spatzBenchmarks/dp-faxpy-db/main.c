@@ -29,7 +29,7 @@
 #define DBG_LVL_INFO 3
 #define DBG_LVL_DBG 4
 
-#define DBG_LVL DBG_LVL_NONE
+#define DBG_LVL DBG_LVL_ERR
 
 #define DEBUG(func, lvl) \
   if (lvl <= DBG_LVL) { \
@@ -40,6 +40,7 @@ double *l1_buf;
 // double *a;
 double *x;
 double *y;
+static double y_temp[4096] __attribute__((section(".data"))) = { 0 };
 
 static inline int fp_check(const double a, const double b) {
   const double threshold = 0.00001;
@@ -64,7 +65,7 @@ void dp_faxpy_db_ma(
   const unsigned int num_cores = snrt_cluster_core_num();
   const unsigned int cid = snrt_cluster_core_idx();
 
-  const unsigned int MEMORY_BANKS = 2;
+  const unsigned int MEMORY_BANKS = 16;
   const unsigned int T_S = sizeof(double);
   const unsigned int CHUNK_SIZE = MEMORY_BANKS / 2; // DMA accesses half of the memory banks at a time
 
@@ -75,6 +76,9 @@ void dp_faxpy_db_ma(
 
   unsigned int load_idx = 0;
   unsigned int calc_timer = 0;
+  unsigned int calc_timer_avg = 0;
+  unsigned dma_wait_tot = 0;
+  unsigned int performance_timer = 0;
 
   if (cid == 0) {
     // Start the initial DMA transfer
@@ -97,19 +101,24 @@ void dp_faxpy_db_ma(
     DEBUG(printf("Dram %p, X %p, Y %p, Num: %u\n",
       axpy_X_dram + load_idx, x,
       y, CHUNK_SIZE * NUM_CHUNKS), DBG_LVL_DBG);
-    calc_timer = benchmark_get_cycle();
+    performance_timer = benchmark_get_cycle();
   }
 
   snrt_cluster_hw_barrier();
   unsigned int iter = 0; // The keep track of which side of the memory we are using currently
 
   do {
-    if (cid == 0)
+    if (cid == 0) {
+      unsigned dma_wait = benchmark_get_cycle();
       snrt_dma_wait_all();
+      dma_wait = benchmark_get_cycle() - dma_wait;
+      dma_wait_tot += dma_wait;
+    }
 
       load_idx += CHUNK_SIZE * NUM_CHUNKS; // increment the index of the next load
 
       if (cid == 0) {
+        start_kernel();
         // Start the DMA transfer on chunk i + 1
         if (load_idx < vec_dim) {
           unsigned store_offset = ((iter + 1) % 2) * CHUNK_SIZE;
@@ -129,6 +138,7 @@ void dp_faxpy_db_ma(
             CHUNK_SIZE * T_S,
             NUM_CHUNKS
           );
+          stop_kernel();
           DEBUG(printf("Dram %p, X %p, Y %p, Num: %u\n",
             axpy_X_dram + load_idx, x + store_offset,
             y + store_offset, CHUNK_SIZE * NUM_CHUNKS), DBG_LVL_DBG);
@@ -138,10 +148,14 @@ void dp_faxpy_db_ma(
 
       // Do the calculation on both cores
       unsigned int calc_width = CHUNK_SIZE;
-      unsigned left_right = (iter % 2) * CHUNK_SIZE; // The offset to the left or right side of the memory
       unsigned core_offset = cid * MEMORY_BANKS;
+      unsigned left_right = (iter % 2) * CHUNK_SIZE; // The offset to the left or right side of the memory
 
       snrt_cluster_hw_barrier();
+
+      if (cid == 0) {
+        calc_timer = benchmark_get_cycle();
+      }
 
       faxpy_db_v64b(
         a,
@@ -150,10 +164,17 @@ void dp_faxpy_db_ma(
         calc_width * NUM_CHUNKS / num_cores
       );
 
+      if (cid == 0) {
+        calc_timer = benchmark_get_cycle() - calc_timer;
+        calc_timer_avg += calc_timer;
+      }
+
       snrt_cluster_hw_barrier();
+
 
       // Store the result of iteration i back to DRAM
       if (cid == 0) {
+        start_kernel();
         snrt_dma_start_2d(
           axpy_Y_dram + load_idx - (CHUNK_SIZE * NUM_CHUNKS),
           y + left_right,
@@ -162,6 +183,7 @@ void dp_faxpy_db_ma(
           2 * CHUNK_SIZE * T_S,
           NUM_CHUNKS
         );
+        stop_kernel();
         DEBUG(printf("Load index: %u, Iteration: %u\n", load_idx, iter), DBG_LVL_DBG);
       }
 
@@ -175,16 +197,22 @@ void dp_faxpy_db_ma(
   snrt_cluster_hw_barrier();
 
   if (cid == 0)
-    calc_timer = benchmark_get_cycle() - calc_timer;
+    performance_timer = benchmark_get_cycle() - performance_timer;
 
 
   if (cid == 0) {
-    long unsigned int performance = 1000 * 2 * vec_dim / calc_timer;
+    printf("The DMA wait took %u cycles on average.\n", dma_wait_tot / iter);
+    printf("The calculation took %u cycles on average.\n", calc_timer_avg / iter);
+  }
+
+
+  if (cid == 0) {
+    long unsigned int performance = 1000 * 2 * vec_dim / performance_timer;
     long unsigned int utilization =
         performance / (2 * num_cores * SNRT_NFPU_PER_CORE);
 
     printf("\n----- (%d) MA DB axpy -----\n", vec_dim);
-    printf("The execution took %u cycles.\n", calc_timer);
+    printf("The execution took %u cycles.\n", performance_timer);
     printf("The performance is %ld OP/1000cycle (%ld%%o utilization).\n",
            performance, utilization);
   }
@@ -216,7 +244,11 @@ void dp_faxpy_db_simple(
   }
 
   unsigned int load_idx = 0;
+
   unsigned int calc_timer = 0;
+  unsigned int calc_timer_avg = 0;
+  unsigned dma_wait_tot = 0;
+  unsigned int performance_timer = 0;
 
   if (cid == 0) {
     // Start the initial DMA transfer
@@ -233,7 +265,7 @@ void dp_faxpy_db_simple(
     DEBUG(printf("Dram %p, X %p, Y %p, Num: %u\n",
       axpy_X_dram + load_idx, x,
       y, CHUNK_SIZE * NUM_CHUNKS), DBG_LVL_DBG);
-    calc_timer = benchmark_get_cycle();
+    performance_timer = benchmark_get_cycle();
   }
   snrt_cluster_hw_barrier();
 
@@ -241,8 +273,12 @@ void dp_faxpy_db_simple(
 
   do {
 
-    if (cid == 0)
+    if (cid == 0) {
+      unsigned dma_wait = benchmark_get_cycle();
       snrt_dma_wait_all();
+      dma_wait = benchmark_get_cycle() - dma_wait;
+      dma_wait_tot += dma_wait;
+    }
 
     load_idx += CHUNK_SIZE * NUM_CHUNKS;
 
@@ -268,7 +304,11 @@ void dp_faxpy_db_simple(
 
     unsigned int calc_size = CHUNK_SIZE * NUM_CHUNKS / num_cores;
     unsigned calc_offset = (iter % 2) * CHUNK_SIZE * NUM_CHUNKS + cid * calc_size;
-    DEBUG(printf("Core %u, calc_offset: %u, calc_size: %u\n", cid, calc_offset, calc_size), DBG_LVL_ERR);
+    // DEBUG(printf("Core %u, calc_offset: %u, calc_size: %u\n", cid, calc_offset, calc_size), DBG_LVL_ERR);
+
+    if (cid == 0) {
+      calc_timer = benchmark_get_cycle();
+    }
 
     faxpy_v64b(
       a,
@@ -276,6 +316,11 @@ void dp_faxpy_db_simple(
       y + calc_offset,
       calc_size
     );
+
+    if (cid == 0) {
+      calc_timer = benchmark_get_cycle() - calc_timer;
+      calc_timer_avg += calc_timer;
+    }
 
     snrt_cluster_hw_barrier();
 
@@ -285,11 +330,6 @@ void dp_faxpy_db_simple(
         y + calc_offset,
         CHUNK_SIZE * NUM_CHUNKS * T_S
       );
-      // for (unsigned int i = 0; i < 2 * calc_size; i++) {
-      //   DEBUG(printf("Y[%u] = %f\n", load_idx - (CHUNK_SIZE * NUM_CHUNKS) + i,
-      //                (float)(y + calc_offset)[i]),
-      //         DBG_LVL_ERR);
-      // }
     }
 
     iter++;
@@ -302,15 +342,21 @@ void dp_faxpy_db_simple(
   snrt_cluster_hw_barrier();
 
   if (cid == 0)
-    calc_timer = benchmark_get_cycle() - calc_timer;
+    performance_timer = benchmark_get_cycle() - performance_timer;
 
   if (cid == 0) {
-    long unsigned int performance = 1000 * 2 * vec_dim / calc_timer;
+    printf("The DMA wait took %u cycles on average.\n", dma_wait_tot / iter);
+    printf("The calculation took %u cycles on average.\n", calc_timer_avg / iter);
+  }
+
+
+  if (cid == 0) {
+    long unsigned int performance = 1000 * 2 * vec_dim / performance_timer;
     long unsigned int utilization =
         performance / (2 * num_cores * SNRT_NFPU_PER_CORE);
 
     printf("\n----- (%d) Simple DB axpy -----\n", vec_dim);
-    printf("The execution took %u cycles.\n", calc_timer);
+    printf("The execution took %u cycles.\n", performance_timer);
     printf("The performance is %ld OP/1000cycle (%ld%%o utilization).\n",
            performance, utilization);
   }
@@ -325,7 +371,7 @@ int main() {
   const unsigned int dim = axpy_l.M;
   const unsigned int T_S = sizeof(double);
 
-  const unsigned int SCALAR = 1;
+  const unsigned int SCALAR = 16;
   const unsigned int BUF_SIZE = 2 * 2 * 8 * SCALAR; // in doubles
 
   double *temp_buf = NULL;
@@ -362,8 +408,7 @@ int main() {
       if (fp_check(axpy_Y_dram[i], axpy_GR_dram[i])) {
         printf("Error: Index %d -> Result = %f, Expected = %f\n", i,
                (float)axpy_Y_dram[i], (float)axpy_GR_dram[i]);
-      } else {
-        printf("Success: Index %d -> Result = %f, Expected = %f\n", i, (float)axpy_Y_dram[i], (float)axpy_GR_dram[i]);
+        ret = -1;
       }
     }
   }
@@ -393,6 +438,7 @@ int main() {
       if (fp_check(axpy_Y_dram[i], axpy_GR_dram[i])) {
         printf("Error: Index %d -> Result = %f, Expected = %f\n", i,
                (float)axpy_Y_dram[i], (float)axpy_GR_dram[i]);
+        ret = -1;
       }
     }
   }
@@ -400,5 +446,5 @@ int main() {
   // Wait for core 0 to finish displaying results
   snrt_cluster_hw_barrier();
 
-  return 0;
+  return ret;
 }
