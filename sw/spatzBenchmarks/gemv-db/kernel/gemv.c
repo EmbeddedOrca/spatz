@@ -123,6 +123,8 @@ void gemv_v64b(double *a, double* b, double* c, int M, int N) {
   double *a_ = a + (M-2) * N;
   double *b_ = b;
 
+  // printf("a_ = %p, b_ = %p, c = %p, M = %d, N = %d\n", a_, b_, c, M, N);
+
   asm volatile("vmv.s.x v16, zero");
   asm volatile("vmv.s.x v20, zero");
 
@@ -135,7 +137,7 @@ void gemv_v64b(double *a, double* b, double* c, int M, int N) {
     // Stripmine and accumulate a partial reduced vector
     do {
       // Set the vl
-      asm volatile("vsetvli %0, %1, e64, m4, ta, ma" : "=r"(vl) : "r"(avl));
+      asm volatile("vsetvli %0, %1, e64, m4, ta, ma" : "=r"(vl) : "r"(16));
 
       // Load chunk a and b
       asm volatile("vle64.v v0,  (%0)" ::"r"(b_));
@@ -192,7 +194,6 @@ void gemv_v64b(double *a, double* b, double* c, int M, int N) {
 
   asm volatile("vsetvli %0, %1, e64, m4, ta, ma" : "=r"(vl) : "r"(M));
   asm volatile("vse64.v v20,  (%0)" ::"r"(c));
-
 }
 
 /*
