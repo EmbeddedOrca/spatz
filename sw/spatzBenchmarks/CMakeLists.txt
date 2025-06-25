@@ -22,7 +22,7 @@ endif()
 include_directories(include)
 include_directories(${SNRUNTIME_INCLUDE_DIRS})
 
-add_compile_options(-O3 -g -ffunction-sections)
+add_compile_options(-O3 -g -ffunction-sections -fverbose-asm)
 
 
 # Macro to regenerate the golden values and compile a module
@@ -123,9 +123,13 @@ add_spatz_test_threeParam(sdotp-bp-fmatmul sdotp-bp-fmatmul/main.c 128 256 128)
 
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 256)
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 1024)
+add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 8192)
 
-add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 256)
 add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 16)
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 256)
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 1024)
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 8192)
+add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 32768)
 
 add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 128)
 add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 4096)

@@ -238,10 +238,7 @@ void dp_faxpy_db_simple(
   const unsigned int NUM_CHUNKS = l1_buf_len / 2 / 2 / CHUNK_SIZE;
   double *x = l1_buf;
   double *y = l1_buf + (l1_buf_len / 2);
-  if (cid == 0) {
-    DEBUG(printf("Address of l1_buf: %p\n", l1_buf), DBG_LVL_DBG);
-    DEBUG(printf("Address of x: %p, y: %p\n", x, y), DBG_LVL_DBG);
-  }
+
 
   unsigned int load_idx = 0;
 
@@ -267,15 +264,15 @@ void dp_faxpy_db_simple(
       y, CHUNK_SIZE * NUM_CHUNKS), DBG_LVL_DBG);
     performance_timer = benchmark_get_cycle();
   }
-  snrt_cluster_hw_barrier();
 
   unsigned iter = 0;
+  snrt_dma_txid_t load_transfer = 0;
 
   do {
 
     if (cid == 0) {
       unsigned dma_wait = benchmark_get_cycle();
-      snrt_dma_wait_all();
+      snrt_dma_wait(load_transfer);
       dma_wait = benchmark_get_cycle() - dma_wait;
       dma_wait_tot += dma_wait;
     }
@@ -291,7 +288,7 @@ void dp_faxpy_db_simple(
           axpy_X_dram + load_idx,
           CHUNK_SIZE * NUM_CHUNKS * T_S
         );
-        snrt_dma_start_1d(
+        load_transfer = snrt_dma_start_1d(
           y + store_offset,
           axpy_Y_dram + load_idx,
           CHUNK_SIZE * NUM_CHUNKS * T_S
@@ -371,7 +368,7 @@ int main() {
   const unsigned int dim = axpy_l.M;
   const unsigned int T_S = sizeof(double);
 
-  const unsigned int SCALAR = 16;
+  const unsigned int SCALAR = 256;
   const unsigned int BUF_SIZE = 2 * 2 * 8 * SCALAR; // in doubles
 
   double *temp_buf = NULL;
@@ -394,35 +391,35 @@ int main() {
   // Wait for all cores to finish
   snrt_cluster_hw_barrier();
 
-  dp_faxpy_db_ma(
-    a, // The scalar value
-    (double *)axpy_X_dram, // The input vector X
-    (double *)axpy_Y_dram, // The input vector Y
-    dim, // The dimension of the vectors
-    l1_buf, // The L1 buffer for DMA transfers
-    BUF_SIZE // The size of the L1 buffer in doubles
-  );
+  // dp_faxpy_db_ma(
+  //   a, // The scalar value
+  //   (double *)axpy_X_dram, // The input vector X
+  //   (double *)axpy_Y_dram, // The input vector Y
+  //   dim, // The dimension of the vectors
+  //   l1_buf, // The L1 buffer for DMA transfers
+  //   BUF_SIZE // The size of the L1 buffer in doubles
+  // );
 
-  if (cid == 0) {
-    for (unsigned int i = 0; i < dim; i++) {
-      if (fp_check(axpy_Y_dram[i], axpy_GR_dram[i])) {
-        printf("Error: Index %d -> Result = %f, Expected = %f\n", i,
-               (float)axpy_Y_dram[i], (float)axpy_GR_dram[i]);
-        ret = -1;
-      }
-    }
-  }
+  // if (cid == 0) {
+  //   for (unsigned int i = 0; i < dim; i++) {
+  //     if (fp_check(axpy_Y_dram[i], axpy_GR_dram[i])) {
+  //       printf("Error: Index %d -> Result = %f, Expected = %f\n", i,
+  //              (float)axpy_Y_dram[i], (float)axpy_GR_dram[i]);
+  //       ret = -1;
+  //     }
+  //   }
+  // }
 
-  snrt_cluster_hw_barrier();
+  // snrt_cluster_hw_barrier();
 
-  if (cid == 0) {
-    // Copy the original y to a temporary buffer
-    for (unsigned int i = 0; i < dim; i++) {
-      axpy_Y_dram[i] = y_temp[i];
-    }
-  }
+  // if (cid == 0) {
+  //   // Copy the original y to a temporary buffer
+  //   for (unsigned int i = 0; i < dim; i++) {
+  //     axpy_Y_dram[i] = y_temp[i];
+  //   }
+  // }
 
-  snrt_cluster_hw_barrier();
+  // snrt_cluster_hw_barrier();
 
   dp_faxpy_db_simple(
     a, // The scalar value

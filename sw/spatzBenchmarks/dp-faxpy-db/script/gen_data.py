@@ -662,8 +662,8 @@ def main():
         # vec_X, bits_X = rand_data_generator((param["M"], 1), param["prec"])
         # vec_Y, bits_Y = rand_data_generator((param["M"], 1), param["prec"])
         # alpha, bits_a = rand_data_generator((1, 1), param["prec"])
-        vec_X, bits_X = ascending_data_generator((param["M"], 1), param["prec"])
-        vec_Y, bits_Y = ascending_data_generator((param["M"], 1), param["prec"])
+        vec_X, bits_X = rand_data_generator((param["M"], 1), param["prec"])
+        vec_Y, bits_Y = rand_data_generator((param["M"], 1), param["prec"])
         # alpha, bits_a = ascending_data_generator((1, 1), param["prec"])
         alpha = torch.tensor([2.1], dtype=torch.float64)
         bits_a = None
