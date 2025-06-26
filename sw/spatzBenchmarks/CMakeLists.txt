@@ -137,6 +137,7 @@ add_spatz_test_oneParam(dp-fdotp dp-fdotp/main.c 4096)
 # Dubble buffering implementation
 add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 128)
 add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 4096)
+add_spatz_test_oneParam(dp-fdotp-db dp-fdotp-db/main.c 8192)
 
 add_spatz_test_twoParam_T(gemv gemv/main.c 64 128 64)
 
