@@ -126,7 +126,6 @@ add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 1024)
 add_spatz_test_oneParam(dp-faxpy dp-faxpy/main.c 8192)
 
 
-add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 1024)
 add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 256)
 add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 1024)
 add_spatz_test_oneParam(dp-faxpy-db dp-faxpy-db/main.c 8192)
