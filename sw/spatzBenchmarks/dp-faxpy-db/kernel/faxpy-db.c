@@ -18,7 +18,7 @@
 
 #include "faxpy-db.h"
 
-// 64-bit AXPY: y = a * x + y
+// 64-bit AXPY: y = a * x + y, memory aware double buffering
 void faxpy_db_v64b(const double a, const double *x, const double *y,
                 unsigned int avl) {
   const unsigned int VL = 8; // Vector length
@@ -28,27 +28,19 @@ void faxpy_db_v64b(const double a, const double *x, const double *y,
 
   unsigned int vl;
 
-  // printf("core %u - Starting faxpy_db_v64b with a: %f, x: %p, y: %p, avl: %u\n", cid, a, x, y, avl);
-
   // Set the VL
   asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(VL));
   // Start the initial load
   asm volatile("vle64.v v0, (%0)" ::"r"(x));
   asm volatile("vle64.v v4, (%0)" ::"r"(y));
-  // printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
   x += LJ;
   y += LJ;
 
   // Stripmine and accumulate a partial vector
   do {
-    // Set the vl
-    // asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(VL));
-
     // Load vectors
     asm volatile("vle64.v v8, (%0)" ::"r"(x));
     asm volatile("vle64.v v12, (%0)" ::"r"(y));
-    // printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
-
     // Multiply-accumulate
     asm volatile("vfmacc.vf v4, %0, v0" ::"f"(a));
     asm volatile("vse64.v v4, (%0)" ::"r"(y-LJ));
@@ -62,8 +54,6 @@ void faxpy_db_v64b(const double a, const double *x, const double *y,
     // Load vectors
     asm volatile ("vle64.v v0, (%0)" ::"r"(x));
     asm volatile ("vle64.v v4, (%0)" ::"r"(y));
-    // printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
-
     // Multiply-accumulate
     asm volatile("vfmacc.vf v12, %0, v8" ::"f"(a));
     asm volatile("vse64.v v12, (%0)" ::"r"(y-LJ));
@@ -104,34 +94,24 @@ void faxpy_dbnu_v64b(const double a, const double *x, const double *y,
   } while (avl > 0);
 }
 
+// 64-bit AXPY: y = a * x + y, unrolled once
 void faxpy_v64b_unroll(const double a, const double *x, const double *y, unsigned int avl) {
   const unsigned int cid = snrt_cluster_core_idx();
 
   unsigned int vl;
 
-  // printf("core %u - Starting faxpy_db_v64b with a: %f, x: %p, y: %p, avl: %u\n", cid, a, x, y, avl);
-
   // Set the VL
   asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(avl/2));
-  // printf("core %u - Set vl: %u\n", cid, vl);
-
   // Start the initial load
   asm volatile("vle64.v v0, (%0)" ::"r"(x));
   asm volatile("vle64.v v8, (%0)" ::"r"(y));
-  // printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
-  x += vl;
   y += vl;
 
   // Stripmine and accumulate a partial vector
   do {
-    // Set the vl
-    // asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(VL));
-
     // Load vectors
     asm volatile("vle64.v v16, (%0)" ::"r"(x));
     asm volatile("vle64.v v24, (%0)" ::"r"(y));
-    // printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
-
     // Multiply-accumulate
     asm volatile("vfmacc.vf v8, %0, v0" ::"f"(a));
     asm volatile("vse64.v v8, (%0)" ::"r"(y-vl));
@@ -145,8 +125,6 @@ void faxpy_v64b_unroll(const double a, const double *x, const double *y, unsigne
     // Load vectors
     asm volatile ("vle64.v v0, (%0)" ::"r"(x));
     asm volatile ("vle64.v v8, (%0)" ::"r"(y));
-    // printf("core %u - Loaded x: %p, y: %p\n", cid, x, y);
-
     // Multiply-accumulate
     asm volatile("vfmacc.vf v24, %0, v16" ::"f"(a));
     asm volatile("vse64.v v24, (%0)" ::"r"(y-vl));

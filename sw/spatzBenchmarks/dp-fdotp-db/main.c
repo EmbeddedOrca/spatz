@@ -23,6 +23,7 @@
 #include DATAHEADER
 #include "kernel/fdotp-db.c"
 
+// Uncomment for fine grained timing
 // #define TIMING 1
 
 #define DBG_LVL_NONE 0
@@ -40,9 +41,9 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+// Shared Variables between cores
 double *l1_buf;
-double *a;
-double *b;
+// I had some problems with accumulating between the two cores, so I use a global result array
 double *result_ma;
 double *result_simple;
 
@@ -59,20 +60,12 @@ static inline int fp_check(const double a, const double b) {
   return comp > threshold;
 }
 
-double fdotp(double *a, double *b, unsigned int num) {
-  double acc = a[0] * b[0];
-  double res = 0.0;
-
-  for (unsigned int i = 1; i < num; ++i) {
-    res = a[i] * b[i];
-    acc += res;
-    DEBUG(printf("a[%u] = %f, b[%u] = %f, acc = %f\n", i, a[i], i, b[i], acc), DBG_LVL_DBG);
-    snrt_cluster_hw_barrier();
-  }
-
-  return acc;
-}
-
+/**
+ * @brief Used to reduce a vector of doubles to a single value
+ *
+ * @param a Pointer to the vector of doubles
+ * @param avl The number of elements in the vector
+ */
 double vreduce_sum(double *a, unsigned int avl) {
   const unsigned int orig_avl = avl;
   unsigned int vl;
@@ -99,17 +92,22 @@ double vreduce_sum(double *a, unsigned int avl) {
 }
 
 /**
- * @brief Implementation of the dot product using memory-aware double buffering.
+ * @brief Performs a dot product of two vectors using double buffering considering the memory layout.
  *
- * This function computes the dot product of two vectors A and B of size `dim`
+ * @param dotp_A_dram Pointer to the first vector in DRAM
+ * @param dotp_B_dram Pointer to the second vector in DRAM
+ * @param vec_dim The dimension of the vectors
+ * @param l1_buf Pointer to a buffer in L1 memory
+ * @param l1_buf_len Length of the L1 buffer in bytes
+ * @return The result of the dot product for the current core
  */
 double dp_dotp_db_ma(
   double *dotp_A_dram,
   double *dotp_B_dram,
-  unsigned int vec_dim,
+  const unsigned int vec_dim,
 
   double *l1_buf,
-  unsigned int l1_buf_len
+  const unsigned int l1_buf_len
 ) {
   const unsigned int cid = snrt_cluster_core_idx();
   const unsigned int num_cores = snrt_cluster_core_num();
@@ -287,13 +285,23 @@ double dp_dotp_db_ma(
   return res;
 }
 
+/**
+ * @brief Performs a dot product of two vectors using double buffering.
+ *
+ * @param dotp_A_dram Pointer to the first vector in DRAM
+ * @param dotp_B_dram Pointer to the second vector in DRAM
+ * @param vec_dim The dimension of the vectors
+ * @param l1_buf Pointer to a buffer in L1 memory
+ * @param l1_buf_len Length of the L1 buffer in bytes
+ * @return The result of the dot product for the current core
+ */
 double dp_dotp_db_simple(
   double *dotp_A_dram,
   double *dotp_B_dram,
-  unsigned int vec_dim,
+  const unsigned int vec_dim,
 
   double *l1_buf,
-  unsigned int l1_buf_len // In sizeof doubles
+  const unsigned int l1_buf_len // In sizeof doubles
 ) {
   const unsigned int cid = snrt_cluster_core_idx();
   const unsigned int num_cores = snrt_cluster_core_num();
@@ -343,8 +351,6 @@ double dp_dotp_db_simple(
     performance_timer = benchmark_get_cycle();
   }
 
-  snrt_cluster_hw_barrier();
-
   do {
     // Wait for the data load of the current calc data
     if (cid == 0) {
@@ -378,13 +384,13 @@ double dp_dotp_db_simple(
       }
     }
 
-    // Calculate the i sub-vector dot product
-#ifdef TIMING
+    #ifdef TIMING
     if (cid == 0) {
       calc_timer = benchmark_get_cycle();
     }
-#endif
+    #endif
 
+    // Calculate the i sub-vector dot product
     result[cid] = fdotp_v64b(
       a0 + CORE_OFFSET,
       b0 + CORE_OFFSET,
@@ -434,8 +440,6 @@ double dp_dotp_db_simple(
       performance, utilization);
     }
 
-  printf("Result of core %u: %f\n", cid, res);
-
   snrt_cluster_hw_barrier();
 
   return res;
@@ -453,11 +457,12 @@ int main() {
 
   const unsigned int NUM_BANKS = 16;
 
-  const unsigned int SCALAR = 8;
+  // The minimal buffer size is 32 doubles (16 banks * 2 cores)
+  const unsigned int SCALAR = dim / 32;
   const unsigned int BUF_SIZE = num_cores * NUM_BANKS * SCALAR; // in doubles
 
 
-  // Allocate the vector space in L1 memory
+  // Allocate the buffers in L1 memory
   if (cid == 0) {
     l1_buf = (double *)snrt_l1alloc(BUF_SIZE * T_S);
     result_ma = (double *)snrt_l1alloc(num_cores * T_S);
@@ -468,6 +473,7 @@ int main() {
 
   snrt_cluster_hw_barrier();
 
+  // Test the first implementation
   result_ma[cid] = dp_dotp_db_ma(
     (double *)dotp_A_dram,
     (double *)dotp_B_dram,
@@ -487,22 +493,24 @@ int main() {
 
   snrt_cluster_hw_barrier();
 
-  // result_simple[cid] = dp_dotp_db_simple(
-  //   (double *)dotp_A_dram,
-  //   (double *)dotp_B_dram,
-  //   dim,
-  //   l1_buf,
-  //   BUF_SIZE
-  // );
+  // Test the second implementation
+  result_simple[cid] = dp_dotp_db_simple(
+    (double *)dotp_A_dram,
+    (double *)dotp_B_dram,
+    dim,
+    l1_buf,
+    BUF_SIZE
+  );
 
-  // if (cid == 0) {
-  //   double res_simple = result[0] + result[1];
-  //   if (fp_check(res_simple, dotp_result)) {
-  //     printf("\033[31;1mSimple Error\033[0m: Result = %f, Golden = %f\n", res_simple, dotp_result);
-  //     ret = -1;
-  //   }
-  // }
-  // snrt_cluster_hw_barrier();
+  if (cid == 0) {
+    double res_simple = result[0] + result[1];
+    if (fp_check(res_simple, dotp_result)) {
+      printf("\033[31;1mSimple Error\033[0m: Result = %f, Golden = %f\n", res_simple, dotp_result);
+      ret = -1;
+    }
+  }
+
+  snrt_cluster_hw_barrier();
 
   return ret;
 }

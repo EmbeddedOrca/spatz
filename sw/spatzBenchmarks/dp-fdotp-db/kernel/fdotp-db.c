@@ -18,10 +18,18 @@
 
 #include "fdotp-db.h"
 
-// 64-bit dot-product: a * b
+/**
+ * @brief Performs a dot product of two vectors using double buffering and memory alignment.
+ *        It only uses the left or right 8 banks of the L1 memory buffer. Unrolled once.
+ *
+ * @param a Pointer to the first vector in L1 memory
+ * @param b Pointer to the second vector in L1 memory
+ * @param avl The number of elements in the vectors
+ * @param acc The initial value of the accumulator
+ */
 double fdotp_v64b_ma(const double *a, const double *b, unsigned int avl, double acc) {
   const unsigned int VL = 8; // Vector length
-  const unsigned int LJ = 2 * VL; // Load jump size (in bytes)
+  const unsigned int LJ = 2 * VL; // Load jump size (in doubles)
 
   const unsigned int cid = snrt_cluster_core_idx();
 
@@ -32,21 +40,15 @@ double fdotp_v64b_ma(const double *a, const double *b, unsigned int avl, double 
 
   // Clean the accumulator
   asm volatile("vsetvli %0, %1, e64, m1, ta, ma" : "=r"(vl) : "r"(VL));
-  // asm volatile("vmv.s.x v0, zero");
   asm volatile("vfmv.s.f v0, %0" : "=f"(acc));
-  // asm volatile("vmv.s.x v24, zero");
 
   // Stripmine and accumulate a partial reduced vector
   asm volatile("vle64.v v4, (%0)" ::"r"(a));
   asm volatile("vle64.v v8, (%0)" ::"r"(b));
-  // printf("core %u - Loaded a: %p, b: %p\n", cid, a, b);
   a += LJ;
   b += LJ;
 
   do {
-    // Set the vl
-    // asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(4));
-
     // Load chunk a and b
     asm volatile("vle64.v v12,  (%0)" ::"r"(a));
     asm volatile("vle64.v v16, (%0)" ::"r"(b));
@@ -67,7 +69,6 @@ double fdotp_v64b_ma(const double *a, const double *b, unsigned int avl, double 
 
     asm volatile("vle64.v v4,  (%0)" ::"r"(a));
     asm volatile("vle64.v v8, (%0)" ::"r"(b));
-    // printf("core %u - Loaded a: %p, b: %p\n", cid, a, b);
     a += LJ;
     b += LJ;
 
@@ -77,13 +78,21 @@ double fdotp_v64b_ma(const double *a, const double *b, unsigned int avl, double 
   } while (avl > 0);
 
   // Reduce and return
-  // asm volatile("vsetvli zero, %0, e64, m8, ta, ma" ::"r"(4));
   asm volatile("vfredusum.vs v0, v24, v0");
   asm volatile("vfmv.f.s %0, v0" : "=f"(red));
 
   return red;
 }
 
+/**
+ * @brief Performs a dot product of two vectors using double buffering without memory alignment.
+ *        It only uses the left or right 8 banks of the L1 memory buffer. Unrolled once.
+ *
+ * @param a Pointer to the first vector in L1 memory
+ * @param b Pointer to the second vector in L1 memory
+ * @param avl The number of elements in the vectors
+ * @param acc The initial value of the accumulator
+ */
 double fdotp_v64b_unroll(const double *a, const double *b, unsigned int avl, double acc) {
   const unsigned int orig_avl = avl;
   unsigned int vl;
@@ -92,15 +101,10 @@ double fdotp_v64b_unroll(const double *a, const double *b, unsigned int avl, dou
 
   // Clean the accumulator
   asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(avl));
-  // asm volatile("vmv.s.x v0, zero");
   asm volatile("vfmv.s.f v0, %0" : "=f"(acc));
-  // asm volatile("vmv.s.x v24, zero");
 
   // Stripmine and accumulate a partial reduced vector
   do {
-    // Set the vl
-    // asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(avl));
-
     // Load chunk a and b
     asm volatile("vle64.v v8,  (%0)" ::"r"(a));
     asm volatile("vle64.v v16, (%0)" ::"r"(b));
